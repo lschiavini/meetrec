@@ -1,0 +1,5 @@
+{
+  "recordingsDir": "~/Downloads/audio-recordings",
+  "whisperModel": "mlx-community/whisper-large-v3-turbo",
+  "vocabulary": "Names, products and jargon the transcriber should expect, comma separated."
+}
