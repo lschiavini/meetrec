@@ -10,6 +10,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/MeetRec "$APP/Contents/MacOS/MeetRec"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp scripts/process.sh scripts/transcribe.py "$APP/Contents/Resources/"
 chmod +x "$APP/Contents/Resources/process.sh"
 

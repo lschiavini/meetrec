@@ -140,25 +140,60 @@ struct PanelView: View {
 }
 
 @MainActor
+func makePanel(model: Model) -> FloatingPanel {
+    let host = NSHostingView(rootView: PanelView(model: model))
+    let panel = FloatingPanel(
+        contentRect: NSRect(origin: .zero, size: host.fittingSize),
+        styleMask: [.borderless, .nonactivatingPanel],
+        backing: .buffered, defer: false)
+    panel.contentView = host
+    panel.isOpaque = false
+    panel.backgroundColor = .clear
+    panel.hasShadow = true
+    panel.level = .statusBar
+    panel.hidesOnDeactivate = false
+    panel.isMovableByWindowBackground = true
+    panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+    return panel
+}
+
+/// Shows the panel in each state with made-up data and saves a PNG of each, for the README.
+@MainActor
+func saveScreenshots(to directory: String) async {
+    let shots: [(name: String, phase: Model.Phase, title: String)] = [
+        ("idle", .idle, ""),
+        ("recording", .recording(since: Date().addingTimeInterval(-754)), "Design review"),
+        ("transcribing", .processing(stage: "Transcribing…"), ""),
+        ("done", .done, ""),
+    ]
+    try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+    for shot in shots {
+        let model = Model()
+        model.phase = shot.phase
+        model.title = shot.title
+        model.systemLevel = 0.6
+        model.micLevel = 0.3
+        let panel = makePanel(model: model)
+        panel.setFrameOrigin(NSPoint(x: 200, y: 400))
+        panel.orderFrontRegardless()
+        try? await Task.sleep(nanoseconds: 800_000_000)
+        let capture = Process()
+        capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        capture.arguments = ["-x", "-l", String(panel.windowNumber), "\(directory)/\(shot.name).png"]
+        try? capture.run()
+        capture.waitUntilExit()
+        panel.orderOut(nil)
+    }
+}
+
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: FloatingPanel!
     private let model = Model()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let host = NSHostingView(rootView: PanelView(model: model))
-        let size = host.fittingSize
-        panel = FloatingPanel(
-            contentRect: NSRect(origin: .zero, size: size),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered, defer: false)
-        panel.contentView = host
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
-        panel.level = .statusBar
-        panel.hidesOnDeactivate = false
-        panel.isMovableByWindowBackground = true
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        panel = makePanel(model: model)
+        let size = panel.frame.size
         // Keeps the panel out of screenshots, recordings and screen shares.
         panel.sharingType = .none
 
@@ -198,6 +233,19 @@ if let flag = CommandLine.arguments.firstIndex(of: "--selftest"), CommandLine.ar
         }
     }
     dispatchMain()
+}
+
+// `MeetRec --screenshots DIR` saves a PNG of the panel in each state, for the README.
+if let flag = CommandLine.arguments.firstIndex(of: "--screenshots"), CommandLine.arguments.count > flag + 1 {
+    let directory = CommandLine.arguments[flag + 1]
+    MainActor.assumeIsolated {
+        NSApplication.shared.setActivationPolicy(.accessory)
+        Task { @MainActor in
+            await saveScreenshots(to: directory)
+            exit(0)
+        }
+        NSApplication.shared.run()
+    }
 }
 
 MainActor.assumeIsolated {
