@@ -56,15 +56,42 @@ If you have a code-signing identity in your keychain, the build script signs wit
 | `recordingsDir` | Where recording folders go (default in the example: `~/Downloads/audio-recordings`) |
 | `whisperModel` | Any mlx-whisper model on Hugging Face, e.g. `mlx-community/whisper-large-v3-turbo` |
 | `vocabulary` | Names, products and jargon the transcriber should expect, comma separated |
+| `languages` | Optional, e.g. `it,pt`: the languages spoken. Empty means detect them per recording |
 
 ## Command line
 
-```sh
-# Transcribe any recording folder, or import and transcribe an audio file from elsewhere
-/Applications/MeetRec.app/Contents/Resources/process.sh ~/Downloads/call.m4a
+Everything the panel does also works from the terminal. `./scripts/build-app.sh --install` links the `meetrec` command into `~/.local/bin` (add `--no-launch` to skip opening the panel).
 
-# Record five seconds without the panel and print what was captured (checks permissions)
-/Applications/MeetRec.app/Contents/MacOS/MeetRec --selftest /tmp/meetrec-selftest 5
+```sh
+meetrec record "Design review"       # records until Ctrl-C, then saves and mixes
+meetrec record standup --for 15m     # stops by itself after 15 minutes
+meetrec start "1:1 with Ana"         # background recording; prints the folder
+meetrec status                       # recording or not (exit 1 when not)
+meetrec stop                         # saves and mixes the background recording
+
+meetrec list                         # newest first; * = has a transcript, ● = recording now
+meetrec transcribe                   # latest meeting; or name one: meetrec transcribe design
+meetrec transcribe ~/Downloads/call.m4a   # imports an audio file as a new meeting
+meetrec show design                  # print the transcript (--mic: your microphone only)
+meetrec copy design                  # "meeting: <name>" on the clipboard, for an agent
+meetrec rename latest "Design review v2"
+meetrec delete 2026-11-11-1530       # to the Trash; never assumes "latest"
+
+meetrec folder ~/Meetings            # change where new recordings go
+meetrec config languages it,pt       # set any config key
+meetrec selftest 5                   # record 5 seconds to /tmp and show both tracks
+meetrec help
+```
+
+A meeting can be named by its full folder name, any unique part of it, a folder path, `meeting: <name>` as copied, or `latest` (the default where it makes sense).
+
+Recording runs inside MeetRec.app, launched without its panel, so it uses the app's recording permissions and your terminal needs none. A recording started from the terminal does not show in a panel that is already open. `MEETREC_CONFIG` points the command at a different config file, `MEETREC_APP` at a different build.
+
+Other entry points:
+
+```sh
+# The processing script the app and the CLI both use
+/Applications/MeetRec.app/Contents/Resources/process.sh RECORDING_DIR|AUDIO_FILE [mix|transcribe]
 
 # Regenerate the README screenshots
 .build/release/MeetRec --screenshots docs/screenshots
@@ -76,5 +103,7 @@ Right-click the panel for the Finder folder, the transcript, the log, and Quit.
 
 - `Sources/MeetRec/Recorder.swift` captures system audio and the microphone in one ScreenCaptureKit stream (macOS 15 added microphone capture to it) and writes each to its own file with AVFoundation.
 - `Sources/MeetRec/Model.swift` holds the panel state and runs `scripts/process.sh` for mixing and transcription.
+- `Sources/MeetRec/Headless.swift` is the panel-less recorder behind `meetrec start`/`record`: it records until SIGTERM or SIGINT and reports through a status file.
+- `scripts/meetrec` is the command line; it launches the headless recorder with `open` and calls `process.sh` for the rest.
 - `scripts/process.sh` mixes the tracks with ffmpeg, then runs `scripts/transcribe.py` through `uv run`, which installs mlx-whisper on first use.
 - `scripts/make-icon.sh` rebuilds `Resources/AppIcon.icns` from the SVG (needs `rsvg-convert`).

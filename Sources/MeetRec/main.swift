@@ -212,6 +212,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+// `MeetRec --record --status FILE [--name TITLE]` records with no panel; the `meetrec` CLI drives it.
+if CommandLine.arguments.contains("--record") {
+    Headless.record(arguments: CommandLine.arguments)
+}
+
 // `MeetRec --selftest DIR [SECONDS]` records for a few seconds without the panel and prints what was captured.
 if let flag = CommandLine.arguments.firstIndex(of: "--selftest"), CommandLine.arguments.count > flag + 1 {
     let directory = URL(fileURLWithPath: CommandLine.arguments[flag + 1])

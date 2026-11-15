@@ -81,7 +81,7 @@ final class Model: ObservableObject {
             let config = try Config.load()
             _ = await AVCaptureDevice.requestAccess(for: .audio)
             let now = Date()
-            let directory = try makeDirectory(root: config.recordingsDir, date: now)
+            let directory = try RecordingFolder.create(root: config.recordingsDir, title: title, date: now)
             created = directory
             try await recorder.start(in: directory)
             self.directory = directory
@@ -124,35 +124,9 @@ final class Model: ObservableObject {
         }
     }
 
-    private func makeDirectory(root: String, date: Date) throws -> URL {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd-HHmm"
-        var name = formatter.string(from: date)
-        let slug = Self.slug(title)
-        if !slug.isEmpty { name += "-" + slug }
-        let rootURL = URL(fileURLWithPath: (root as NSString).expandingTildeInPath)
-        let directory = rootURL.appendingPathComponent(name)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
-    }
-
     private func writeMeta(tracks: [String: TrackInfo], endedAt: Date?, note: String?) {
         guard let directory else { return }
-        let iso = ISO8601DateFormatter()
-        var meta: [String: Any] = ["title": title, "startedAt": iso.string(from: startedAt)]
-        if let endedAt { meta["endedAt"] = iso.string(from: endedAt) }
-        if let note { meta["note"] = note }
-        var trackMeta: [String: Any] = [:]
-        for (name, info) in tracks {
-            var entry: [String: Any] = ["file": info.file]
-            if let pts = info.firstPTS { entry["firstPTS"] = pts }
-            if let failure = info.failure { entry["failure"] = failure }
-            trackMeta[name] = entry
-        }
-        meta["tracks"] = trackMeta
-        if let data = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys]) {
-            try? data.write(to: directory.appendingPathComponent("meta.json"))
-        }
+        RecordingFolder.writeMeta(in: directory, title: title, startedAt: startedAt, tracks: tracks, endedAt: endedAt, note: note)
     }
 
     // MARK: Processing
@@ -298,12 +272,7 @@ final class Model: ObservableObject {
         }
     }
 
-    static func slug(_ text: String) -> String {
-        text.lowercased()
-            .components(separatedBy: CharacterSet.alphanumerics.inverted)
-            .filter { !$0.isEmpty }
-            .joined(separator: "-")
-    }
+    static func slug(_ text: String) -> String { RecordingFolder.slug(text) }
 
     // MARK: Shortcuts
 
@@ -328,6 +297,48 @@ final class Model: ObservableObject {
     private func openPrivacySettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
             NSWorkspace.shared.open(url)
+        }
+    }
+}
+
+/// Folder naming and meta.json, shared by the panel and the headless `--record` mode.
+enum RecordingFolder {
+    static func slug(_ text: String) -> String {
+        text.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .joined(separator: "-")
+    }
+
+    /// `<root>/yyyy-MM-dd-HHmm[-title-slug]`, created on disk.
+    static func create(root: String, title: String, date: Date) throws -> URL {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd-HHmm"
+        var name = formatter.string(from: date)
+        let slug = slug(title)
+        if !slug.isEmpty { name += "-" + slug }
+        let rootURL = URL(fileURLWithPath: (root as NSString).expandingTildeInPath)
+        let directory = rootURL.appendingPathComponent(name)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    static func writeMeta(in directory: URL, title: String, startedAt: Date,
+                          tracks: [String: TrackInfo], endedAt: Date?, note: String?) {
+        let iso = ISO8601DateFormatter()
+        var meta: [String: Any] = ["title": title, "startedAt": iso.string(from: startedAt)]
+        if let endedAt { meta["endedAt"] = iso.string(from: endedAt) }
+        if let note { meta["note"] = note }
+        var trackMeta: [String: Any] = [:]
+        for (name, info) in tracks {
+            var entry: [String: Any] = ["file": info.file]
+            if let pts = info.firstPTS { entry["firstPTS"] = pts }
+            if let failure = info.failure { entry["failure"] = failure }
+            trackMeta[name] = entry
+        }
+        meta["tracks"] = trackMeta
+        if let data = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys]) {
+            try? data.write(to: directory.appendingPathComponent("meta.json"))
         }
     }
 }
