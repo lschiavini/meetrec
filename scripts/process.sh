@@ -68,21 +68,24 @@ mix() {
 }
 
 transcribe() {
-  local model vocabulary
+  local model vocabulary languages
   model=$(cfg whisperModel "mlx-community/whisper-large-v3-turbo")
   vocabulary=$(cfg vocabulary "")
+  languages=$(cfg languages "")  # e.g. "it,pt"; empty = detect per recording
   if [[ ! -s "$DIR/transcript.txt" ]]; then
     print -r -- "STAGE: Transcribing"
-    uv run --quiet "$HERE/transcribe.py" "$DIR/audio.m4a" "$DIR/transcript.tmp.txt" --model "$model" --vocabulary "$vocabulary"
+    uv run --quiet "$HERE/transcribe.py" "$DIR/audio.m4a" "$DIR/transcript.tmp.txt" --model "$model" --vocabulary "$vocabulary" --languages "$languages" --save-languages "$DIR/languages.txt"
     mv "$DIR/transcript.tmp.txt" "$DIR/transcript.txt"
   fi
   # The microphone alone shows which lines are the user's own.
   if [[ -s "$DIR/mic.mov" && -s "$DIR/system.mov" && ! -f "$DIR/transcript-mic.txt" ]]; then
     print -r -- "STAGE: Transcribing your mic"
+    # Same conversation, so same languages; the mic alone is mostly silence, which Whisper calls English.
+    [[ -z "$languages" && -s "$DIR/languages.txt" ]] && languages=$(<"$DIR/languages.txt")
     local s m offset=0
     s=$(track_start system); m=$(track_start mic)
     (( m > s )) && (( offset = m - s ))
-    uv run --quiet "$HERE/transcribe.py" "$DIR/mic.mov" "$DIR/transcript-mic.tmp.txt" --model "$model" --vocabulary "$vocabulary" --offset "$offset"
+    uv run --quiet "$HERE/transcribe.py" "$DIR/mic.mov" "$DIR/transcript-mic.tmp.txt" --model "$model" --vocabulary "$vocabulary" --languages "$languages" --offset "$offset"
     mv "$DIR/transcript-mic.tmp.txt" "$DIR/transcript-mic.txt"
   fi
 }
